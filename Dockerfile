@@ -1,0 +1,24 @@
+FROM python:3.11-alpine AS builder
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir --user -r requirements.txt
+
+FROM python:3.11-alpine
+WORKDIR /app
+
+COPY --from=builder /root/.local /usr/local
+COPY app.py .
+
+RUN addgroup -g 10001 appgroup \
+    && adduser -D -u 10001 -G appgroup -s /sbin/nologin appuser \
+    && chown -R 10001:10001 /app
+
+ENV HOME=/app
+USER 10001:10001
+
+EXPOSE 7100
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD python -c "import socket; socket.create_connection(('localhost',7100),2)" || exit 1
+
+CMD ["gunicorn", "-w", "1", "--worker-class", "gthread", "--threads", "4", "-b", "0.0.0.0:7100", "app:app"]
