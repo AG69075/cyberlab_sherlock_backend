@@ -19,6 +19,13 @@ limiter = Limiter(app=app, key_func=get_remote_address, default_limits=["30 per 
 USERNAME_RE = re.compile(r'^[a-zA-Z0-9._-]{1,64}$')
 SHERLOCK_MAX_RUNTIME_SECONDS = 120  # borne dure sur la durée totale du scan
 
+# Séquences ANSI CSI (couleurs...) et OSC (ex. hyperliens terminal OSC 8) émises par Sherlock
+ANSI_ESCAPE_RE = re.compile(r'\x1b(?:\[[0-9;]*[a-zA-Z]|\][^\x07\x1b]*(?:\x07|\x1b\\))')
+
+
+def strip_ansi(texte):
+    return ANSI_ESCAPE_RE.sub('', texte)
+
 
 def is_valid_username(username):
     return bool(username) and not username.startswith('-') and bool(USERNAME_RE.match(username))
@@ -44,7 +51,7 @@ def sherlock_stream():
         killer.start()
         try:
             for line in iter(process.stdout.readline, b''):
-                texte = line.decode(errors='ignore').strip()
+                texte = strip_ansi(line.decode(errors='ignore')).strip()
                 yield f"data: {texte}\n\n"
             process.wait()
             yield "data: Recherche terminée\n\n"
