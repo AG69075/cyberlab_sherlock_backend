@@ -14,7 +14,14 @@ app = Flask(__name__)
 ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "*")
 CORS(app, origins=ALLOWED_ORIGINS.split(",") if ALLOWED_ORIGINS != "*" else "*")
 
-limiter = Limiter(app=app, key_func=get_remote_address, default_limits=["30 per hour"])
+def client_ip():
+    # Derrière le tunnel Cloudflare, remote_addr est celui du proxy : tous les
+    # visiteurs partageraient un seul compteur. CF-Connecting-IP donne l'IP réelle
+    # (fiable tant que le service n'est joignable que via Cloudflare).
+    return request.headers.get("CF-Connecting-IP") or get_remote_address()
+
+
+limiter = Limiter(app=app, key_func=client_ip, default_limits=["30 per hour"])
 
 USERNAME_RE = re.compile(r'^[a-zA-Z0-9._-]{1,64}$')
 SHERLOCK_MAX_RUNTIME_SECONDS = 120  # borne dure sur la durée totale du scan
