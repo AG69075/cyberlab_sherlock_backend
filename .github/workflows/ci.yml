@@ -106,10 +106,12 @@ jobs:
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock "$TRIVY" image \
             --pkg-types os --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$IMAGE"
 
-      - name: Paquets Python de l'image (informatif)
-        # Non bloquant pour l'instant : remonte gunicorn 21.2.0 (CVE-2024-1135 et
-        # CVE-2024-6827, corrigés en 22.0.0) que requirements.txt plafonne
-        # (<22.0). À passer en bloquant une fois gunicorn mis à jour.
+      - name: Paquets Python de l'image (bloquant, correctifs disponibles)
+        # Exclut setuptools/_vendor : copies embarquées par l'image de base
+        # (jaraco.context, wheel), non utilisées par l'app ; le vrai wheel de
+        # l'image est à jour.
         run: |
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock "$TRIVY" image \
-            --pkg-types library --severity HIGH,CRITICAL --ignore-unfixed "$IMAGE"
+            --pkg-types library --severity HIGH,CRITICAL --ignore-unfixed \
+            --skip-dirs usr/local/lib/python3.11/site-packages/setuptools/_vendor \
+            --exit-code 1 "$IMAGE"
