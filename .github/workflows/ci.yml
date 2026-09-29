@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE: sherlock-app:ci
+  # Outils épinglés par digest (comme les images de base des Dockerfile).
+  RUFF: ghcr.io/astral-sh/ruff:0.16.9@sha256:fd4a00e8f586c07495822a1c93702737b9a98d826b76d460caa514df7794f259
+  TRIVY: aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: ruff check (règles dans ruff.toml)
+        run: docker run --rm -v "$PWD":/src -w /src "$RUFF" check .
+
+  build-and-smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build de l'image
+        run: docker build -t "$IMAGE" .
+
+      - name: Démarrage avec le durcissement de prod
+        # Mêmes contraintes que le docker-compose du NAS : utilisateur 1000,
+        # rootfs en lecture seule, aucune capability, /tmp en noexec.
+        run: |
+          docker run -d --name smoke \
+            --read-only --cap-drop ALL --security-opt no-new-privileges:true \
+            --tmpfs /tmp:rw,noexec,nosuid,size=64m --user 1000:1000 \
+            -e ALLOWED_ORIGINS=https://allowed.example \
+            -p 127.0.0.1:7100:7100 "$IMAGE"
+
+      - name: HEALTHCHECK Docker
+        run: |
+          for _ in $(seq 1 30); do
+            status=$(docker inspect -f '{{.State.Health.Status}}' smoke)
+            echo "health: $status"
+            [ "$status" = healthy ] && exit 0
+            sleep 3
+          done
+          docker logs smoke
+          exit 1
+
+      - name: /health répond 200, sans être limité par le rate limit (30/h)
+        run: |
+          for _ in $(seq 1 40); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:7100/health)
+            test "$code" = 200
+          done
+
+      - name: Un nom d'utilisateur invalide est rejeté (400)
+        # Reste déterministe : ne lance aucun scan Sherlock vers Internet.
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' \
+            'http://127.0.0.1:7100/api/sherlock-stream?username=-x')
+          test "$code" = 400
+
+      - name: CORS autorise l'origine configurée, refuse les autres
+        run: |
+          allowed=$(curl -s -i -H 'Origin: https://allowed.example' \
+            'http://127.0.0.1:7100/api/sherlock-stream?username=-x' \
+            | tr -d '\r' | grep -ci '^access-control-allow-origin: https://allowed.example$' || true)
+          other=$(curl -s -i -H 'Origin: https://evil.example' \
+            'http://127.0.0.1:7100/api/sherlock-stream?username=-x' \
+            | grep -ci '^access-control-allow-origin' || true)
+          test "$allowed" = 1
+          test "$other" = 0
+
+      - name: Le binaire sherlock est présent dans l'image
+        run: docker exec smoke sherlock --version
+
+      - name: Logs du conteneur (en cas d'échec)
+        if: failure()
+        run: docker logs smoke
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Dépendances, secrets et Dockerfile (bloquant)
+        run: |
+          docker run --rm -v "$PWD":/src "$TRIVY" fs \
+            --scanners vuln,secret,misconfig --severity HIGH,CRITICAL \
+            --exit-code 1 /src
+
+      - name: Build de l'image
+        run: docker build -t "$IMAGE" .
+
+      - name: Paquets OS de l'image (bloquant, correctifs disponibles)
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock "$TRIVY" image \
+            --pkg-types os --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$IMAGE"
+
+      - name: Paquets Python de l'image (informatif)
+        # Non bloquant pour l'instant : remonte gunicorn 21.2.0 (CVE-2024-1135 et
+        # CVE-2024-6827, corrigés en 22.0.0) que requirements.txt plafonne
+        # (<22.0). À passer en bloquant une fois gunicorn mis à jour.
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock "$TRIVY" image \
+            --pkg-types library --severity HIGH,CRITICAL --ignore-unfixed "$IMAGE"
