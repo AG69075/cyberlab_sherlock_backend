@@ -38,6 +38,12 @@ def is_valid_username(username):
     return bool(username) and not username.startswith('-') and bool(USERNAME_RE.match(username))
 
 
+@app.route('/health', methods=['GET'])
+@limiter.exempt  # sondé toutes les 30 s par le HEALTHCHECK : ne doit pas consommer le quota
+def health():
+    return Response("ok", status=200, mimetype='text/plain')
+
+
 @app.route('/api/sherlock-stream', methods=['GET'])
 @limiter.limit("5 per minute")
 def sherlock_stream():
