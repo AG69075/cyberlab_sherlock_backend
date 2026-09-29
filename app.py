@@ -10,9 +10,10 @@ from flask_limiter.util import get_remote_address
 
 app = Flask(__name__)
 
-# En prod, fixe ALLOWED_ORIGINS="https://ton-frontend.com" pour ne pas rester en wildcard.
-ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "*")
-CORS(app, origins=ALLOWED_ORIGINS.split(",") if ALLOWED_ORIGINS != "*" else "*")
+# Refus par défaut : sans ALLOWED_ORIGINS, aucune origine cross-origin n'est autorisée.
+# En prod : ALLOWED_ORIGINS="https://aginepro.work" (liste séparée par des virgules).
+ALLOWED_ORIGINS = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") if o.strip()]
+CORS(app, origins=ALLOWED_ORIGINS)
 
 def client_ip():
     # Derrière le tunnel Cloudflare, remote_addr est celui du proxy : tous les
