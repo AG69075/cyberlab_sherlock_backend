@@ -1,6 +1,6 @@
 # Sherlock — Backend
 
-Backend Flask du module Sherlock de [cyberlab](https://github.com/AG69075), une webapp Flutter d'outils de reconnaissance réseau. Ce service expose [Sherlock](https://github.com/sherlock-project/sherlock) (recherche de pseudos sur des réseaux sociaux/plateformes) via une petite API HTTP en streaming (Server-Sent Events).
+Backend Flask du module Sherlock de [cyberlab](https://github.com/AG69075), une webapp Flutter d'outils de reconnaissance réseau. Ce service expose [Sherlock](https://github.com/sherlock-project/sherlock) (recherche de pseudos sur des réseaux sociaux/plateformes) via une petite API HTTP en streaming (Server-Sent Events). 
 
 ## Architecture
 
