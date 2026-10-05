@@ -21,6 +21,6 @@ EXPOSE 7100
 # wget BusyBox plutot que python+urllib : ce dernier coutait ~0,5 s de CPU par
 # passage (soit ~2 % de CPU permanent sur le NAS).
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-    CMD wget -q -O /dev/null http://localhost:7100/health
+    CMD wget -q -O /dev/null http://127.0.0.1:7100/health
 
 CMD ["gunicorn", "-w", "1", "--worker-class", "gthread", "--threads", "4", "-b", "0.0.0.0:7100", "app:app"]
