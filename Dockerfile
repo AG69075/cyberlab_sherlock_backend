@@ -1,10 +1,14 @@
-FROM python:3.11-alpine@sha256:cd04730b8511def3fbf14204d66a0c1536f290b8e896ed5a94cd64cb15ac1356 AS builder
+FROM python:3.11-alpine@sha256:7fbad8e4652eae0186429a6f26cf5b23e27e8c6fd7ac4d0cfd7a6988cdeea1e1 AS builder
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir --user -r requirements.txt
 
-FROM python:3.11-alpine@sha256:cd04730b8511def3fbf14204d66a0c1536f290b8e896ed5a94cd64cb15ac1356
+FROM python:3.11-alpine@sha256:7fbad8e4652eae0186429a6f26cf5b23e27e8c6fd7ac4d0cfd7a6988cdeea1e1
 WORKDIR /app
+
+# Correctif Alpine disponible (krb5 1.22.3-r0) mais pas encore dans l'image de base.
+# A retirer quand le digest de python:3.11-alpine l'inclut.
+RUN apk upgrade --no-cache krb5-libs
 
 COPY --from=builder /root/.local /usr/local
 COPY app.py .
