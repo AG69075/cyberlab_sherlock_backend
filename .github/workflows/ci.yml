@@ -165,7 +165,12 @@ jobs:
       # Ouvre une PR sur cyberlab-infra qui remplace le digest dans le
       # compose. Secret requis dans le depot backend : CYBERLAB_BACKENDS_TOKEN
       # (PAT fine-grained limite a cyberlab-infra : Contents + Pull requests en ecriture).
+      # DEMO AWS : etape d'origine (NAS) DESACTIVEE, conservee telle quelle.
+      # Pour revenir au NAS apres la demo : supprimer la ligne `if: false`
+      # et l'etape « cyberlab-aws » ci-dessous (ou git revert de ce commit).
+      # Copie de reference : tag git backup/ci-bump-cyberlab-infra.
       - name: PR de bump du digest dans cyberlab-infra
+        if: false
         env:
           GH_TOKEN: ${{ secrets.CYBERLAB_BACKENDS_TOKEN }}
           TARGET: NAS-HomeServer/cyberlab-infra
@@ -189,4 +194,35 @@ jobs:
           git push origin "$BRANCH"
           gh pr create --repo "$TARGET" --base main --head "$BRANCH" \
             --title "deploy: ${NAME} -> ${GITHUB_SHA::7}" \
+            --body "Nouvelle image signee : \`${DIGEST}\`. Source : ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}"
+
+      # DEMO AWS : meme bump, mais vers cyberlab-aws (overlay staging, ArgoCD).
+      # Secret requis : CYBERLAB_AWS_TOKEN (PAT fine-grained limite a cyberlab-aws :
+      # Contents + Pull requests en ecriture).
+      - name: PR de bump du digest dans cyberlab-aws
+        env:
+          GH_TOKEN: ${{ secrets.CYBERLAB_AWS_TOKEN }}
+          TARGET: NAS-HomeServer/cyberlab-aws
+        run: |
+          set -euo pipefail
+          NAME="${GITHUB_REPOSITORY##*/}"
+          BASE="ghcr.io/${GITHUB_REPOSITORY,,}"
+          NEW="${DIGEST#*@}"
+          BRANCH="bump/${NAME}-${GITHUB_SHA::7}"
+          gh auth setup-git
+          gh repo clone "$TARGET" infra -- --depth 1
+          cd infra
+          sed -i -E "/name: ${BASE//\//\\/}\$/{n;s/sha256:[a-f0-9]{64}/${NEW}/}" \
+            k8s/cyberlab/overlays/staging/kustomization.yaml
+          if git diff --quiet; then
+            echo "Digest deja a jour, rien a faire."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git commit -am "deploy(staging): ${NAME} -> ${GITHUB_SHA::7} (image signee)"
+          git push origin "$BRANCH"
+          gh pr create --repo "$TARGET" --base main --head "$BRANCH" \
+            --title "deploy(staging): ${NAME} -> ${GITHUB_SHA::7}" \
             --body "Nouvelle image signee : \`${DIGEST}\`. Source : ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}"
